@@ -1,6 +1,6 @@
 /*jslint vars: true, plusplus: true, devel: true, nomen: true, indent: 4,
 maxerr: 50, browser: true */
-/*global define, brackets */
+/*global define, brackets, $ */
 
 /**
  * This extension provides in-editor livepreview through an iframe,
@@ -25,34 +25,47 @@ define(function (require, exports, module) {
         // Load nohost dependencies
         Browser              = require("lib/iframe-browser"),
         HideUI               = require("lib/hideUI"),
-        Launcher             = require("lib/launcher").Launcher,
-        NoHostServer         = require("nohost/src/NoHostServer").NoHostServer,
+        Launcher             = require("lib/launcher"),
+        HTMLServer           = require("nohost/src/HTMLServer").HTMLServer,
+        NewStaticServer      = require("nohost/src/NewStaticServer").NewStaticServer,
         ExtensionUtils       = brackets.getModule("utils/ExtensionUtils"),
         PostMessageTransport = require("lib/PostMessageTransport"),
-        Filer                = brackets.getModule("filesystem/impls/filer/BracketsFiler");
+        FileSystem           = brackets.getModule("filesystem/FileSystem");
 
-    var _server,
+    var _HTMLServer,
+        _staticServer,
         codeMirror,
-        fs           = Filer.fs(),
         parentWindow = window.parent,
         params       = new UrlParams();
 
     // Load initial document
     var defaultHTML = require("text!lib/default.html");
 
+    var file = FileSystem.getFileForPath("/index.html");
+
     // Force entry to if statments on line 262 of brackets.js to create
     // a new project
     PreferencesManager.setViewState("afterFirstLaunch", false);
     params.remove("skipSampleProjectLoad");
 
-    function _getServer() {
-        if (!_server) {
-            _server = new NoHostServer({
+    function _getHTMLServer() {
+        if (!_HTMLServer) {
+            _HTMLServer = new HTMLServer({
                 pathResolver    : ProjectManager.makeProjectRelativeIfPossible,
                 root            : ProjectManager.getProjectRoot()
             });
         }
-        return _server;
+        return _HTMLServer;
+    }
+
+    function _getStaticServer() {
+        if (!_staticServer) {
+            _staticServer = new NewStaticServer({
+                pathResolver    : ProjectManager.makeProjectRelativeIfPossible,
+                root            : ProjectManager.getProjectRoot()
+            });
+        }
+        return _staticServer;
     }
 
     function parseData(data, deferred) {
@@ -64,7 +77,7 @@ define(function (require, exports, module) {
             data = data || {};
         } catch(err) {
             // Quick fix: Ignore the 'process-tick' message being sent
-            if(dataReceived === 'process-tick') {
+            if(dataReceived === "process-tick") {
                 return false;
             }
 
@@ -96,7 +109,7 @@ define(function (require, exports, module) {
             // XXXhumph - this depends on setLauncher() from https://github.com/adobe/brackets/pull/10558
             LiveDevelopment.setLauncher(new Launcher({
                 browser: Browser,
-                server: _getServer()
+                server: _getHTMLServer()
             }));
 
             LiveDevelopment.open();
@@ -147,8 +160,9 @@ define(function (require, exports, module) {
 
         ExtensionUtils.loadStyleSheet(module, "stylesheets/tutorials.css");
 
-        // Register nohost server with highest priority
-        LiveDevServerManager.registerServer({ create: _getServer }, 9001);
+        // Register servers with highest priority
+        LiveDevServerManager.registerServer({ create: _getStaticServer }, 9000);
+        LiveDevServerManager.registerServer({ create: _getHTMLServer }, 9001);
     });
 
     AppInit.appReady(function (){
@@ -266,12 +280,12 @@ define(function (require, exports, module) {
             window.removeEventListener("message", _getInitialDocument);
 
             window.addEventListener("message", _buttonListener);
-
-            fs.writeFile(
-                '/index.html',
-                data.source ? data.source : defaultHTML,
+            // console.log("writing index.html: ",fs);
+            file.write(data.source ? data.source : defaultHTML,
                 function(err) {
+                    console.log("callback", err);
                     if (err) {
+                        console.log("err _getInitialDocument: ", err);
                         deferred.reject();
                         return;
                     }

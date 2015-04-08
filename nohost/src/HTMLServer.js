@@ -74,6 +74,7 @@ define(function (require, exports, module) {
      * Otherwise, it serves only the file's contents as a blob URL.
      */
     HTMLServer.prototype.serveLiveDoc = function(url, callback) {
+        console.log("serveLiveDoc: ", url);
         var path = BlobUtils.getFilename(url);
         var liveDocument = this._liveDocuments[path];
 
